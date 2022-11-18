@@ -1,0 +1,14 @@
+---
+name: Verify bytecode
+description: Verify bytecode of deployed contracts
+inputs:
+    file:
+        description: JSON file to load artifacts definitions
+        required: true
+    rpc-url:
+        description: |
+            RPC URL to make requests to Ethereum node.
+            Default provider will be used if not provided.
+runs:
+    using: node16
+    main: dist/index.js
