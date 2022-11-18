@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+git diff --quiet && IS_DIRTY=0 || IS_DIRTY=1
+
+if [ $IS_DIRTY == 1 ]; then
+    echo "Stashing unstaged changes"
+    git stash push --keep-index
+fi
+
+echo "Generating bundle"
+yarn bundle
+
+git diff --quiet dist/index.js || echo "Updated bundle added to the index"; git add dist/index.js
+
+if [ $IS_DIRTY == 1 ]; then
+    echo "Restoring working directory state"
+    git stash pop -q
+fi

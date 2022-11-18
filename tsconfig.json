@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "target": "es2017",
+        "moduleResolution": "node",
+        "module": "commonjs",
+        "esModuleInterop": true,
+        "typeRoots": ["node_modules/@types"]
+    },
+    "include": ["**/*.ts"],
+    "exclude": ["node_modules/**"],
+    "compileOnSave": false
+}
