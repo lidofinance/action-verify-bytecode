@@ -65,12 +65,12 @@ const redCross = chalk.red("×");
             continue;
         }
 
-        core.setFailed(chalk.red(msg));
+        core.setFailed(msg);
     }
 
     const failures = results.filter((e) => e.status === "rejected");
     for (const fail of failures) {
-        core.setFailed(chalk.red((fail as PromiseRejectedResult).reason));
+        core.setFailed((fail as PromiseRejectedResult).reason);
     }
 })();
 

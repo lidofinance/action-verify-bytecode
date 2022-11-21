@@ -41227,11 +41227,11 @@ const redCross = ansi_colors_1.default.red("×");
             core.info(msg);
             continue;
         }
-        core.setFailed(ansi_colors_1.default.red(msg));
+        core.setFailed(msg);
     }
     const failures = results.filter((e) => e.status === "rejected");
     for (const fail of failures) {
-        core.setFailed(ansi_colors_1.default.red(fail.reason));
+        core.setFailed(fail.reason);
     }
 })();
 async function verifyBytecode(desc, provider) {
