@@ -65,7 +65,7 @@ const redCross = chalk.red("×");
             continue;
         }
 
-        core.setFailed(msg);
+        core.setFailed(`Could not verify bytecode of ${value.desc.name} contract`);
     }
 
     const failures = results.filter((e) => e.status === "rejected");

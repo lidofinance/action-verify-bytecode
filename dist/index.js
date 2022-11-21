@@ -41227,7 +41227,7 @@ const redCross = ansi_colors_1.default.red("×");
             core.info(msg);
             continue;
         }
-        core.setFailed(msg);
+        core.setFailed(`Could not verify bytecode of ${value.desc.name} contract`);
     }
     const failures = results.filter((e) => e.status === "rejected");
     for (const fail of failures) {
