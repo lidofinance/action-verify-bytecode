@@ -41244,6 +41244,8 @@ async function verifyBytecode(desc, provider) {
         throw new Error(`null bytecode read from artifact ${desc.artifactPath}`);
     }
     const status = compareDeployedBytecode(deployedBytecode, compiledBytecode, language);
+    // runtime bytecode compare may fail in case of some immutables aren't known at
+    // compile time, so fallback to contract creation bytecode check
     if (status === undefined) {
         const tx = await provider.getTransaction(desc.txHash);
         if (!tx) {
@@ -41260,15 +41262,21 @@ async function verifyBytecode(desc, provider) {
     return status;
 }
 function compareDeployedBytecode(blockchainBytecode, artifactBytecode, language) {
+    // solidity compiler may place links to library contracts which should
+    // be replaced by the actual addresses at deployment stage
     if (language === "solidity") {
+        // so we basically replace any occurencies of placeholders in compiled bytecode
+        // by the parts of the deployed runtime bytecode
         artifactBytecode = replaceSolidityLinks(artifactBytecode, blockchainBytecode);
     }
     if (blockchainBytecode === artifactBytecode) {
         return true;
     }
     if (language === "solidity") {
+        // solidity compiler adds some metadata to bytecode tail and it worth to trim it first
         const trimmedDeployed = trimSolidityMeta(blockchainBytecode);
         const trimmedCompiled = trimSolidityMeta(artifactBytecode);
+        // no way for bytecode to match if trimmed lengths are differ
         if (trimmedDeployed.length !== trimmedCompiled.length) {
             return false;
         }
@@ -41281,6 +41289,7 @@ function compareDeployedBytecode(blockchainBytecode, artifactBytecode, language)
 function compareCreationBytecode(blockchainBytecode, artifactBytecode, language) {
     let compiledBytecode = artifactBytecode;
     if (language === "solidity") {
+        // solidity compiler adds some metadata to bytecode tail and it worth to trim it first
         compiledBytecode = trimSolidityMeta(compiledBytecode);
     }
     // The reason why this uses `startsWith` instead of `===` is that
