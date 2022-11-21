@@ -4,7 +4,7 @@
   "description": "Verify deployed contracts' bytecode",
   "main": "dist/index.js",
   "repository": "git@github.com:lidofinance/action-verify-bytecode.git",
-  "author": "madlabman <10616301+madlabman@users.noreply.github.com>",
+  "author": "madlabman <madlabman@proton.me>",
   "license": "MIT",
   "private": false,
   "scripts": {
