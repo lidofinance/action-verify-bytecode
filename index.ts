@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 
 import chalk from "ansi-colors";
 import * as core from "@actions/core";
+import * as Diff from "diff";
 import { ethers } from "ethers";
 
 process.on("unhandledRejection", (reason: any, _) => {
@@ -21,13 +22,14 @@ const greenCheck = chalk.green("✓");
 const redCross = chalk.red("×");
 
 (async function main() {
-    const registryPath = core.getInput("file");
+    const registryPath = core.getInput("file", { required: true });
     const registry: ArtifactEntry[] = JSON.parse(
         await fs.readFile(registryPath, { encoding: "utf8" })
     );
 
     let provider: ethers.providers.Provider;
-    const rpcUrl = core.getInput("rpc-url");
+    // @see https://github.com/actions/toolkit/issues/629 for explanation why not rpc-url
+    const rpcUrl = core.getInput("rpcUrl");
     if (rpcUrl) {
         provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl);
     } else {
@@ -79,19 +81,36 @@ async function verifyBytecode(
     provider: ethers.providers.Provider
 ): Promise<boolean> {
     const artifact = JSON.parse(await fs.readFile(desc.artifactPath, { encoding: "utf8" }));
-    const deployedBytecode = await provider.getCode(desc.address);
-    const compiledBytecode = artifact.deployedBytecode;
-    const language = artifact.language?.toLowerCase() || "solidity";
+    const language = desc.sourcePath.split(".").pop() === "vy" ? "vyper" : "solidity";
 
-    if (!compiledBytecode || compiledBytecode.length <= 2) {
-        throw new Error(`null bytecode read from artifact ${desc.artifactPath}`);
+    let runtimeBytecode: string;
+    if (typeof artifact.deployedBytecode === "string") {
+        runtimeBytecode = artifact.deployedBytecode; // brownie
+    } else {
+        runtimeBytecode = artifact.runtimeBytecode?.bytecode; // ape
     }
 
-    const status = compareDeployedBytecode(deployedBytecode, compiledBytecode, language);
+    if (!runtimeBytecode || runtimeBytecode.length <= 2) {
+        throw new Error(`null runtime bytecode read from artifact ${desc.artifactPath}`);
+    }
+
+    const blockchainBytecode = await provider.getCode(desc.address);
+
+    const status = compareDeployedBytecode(blockchainBytecode, runtimeBytecode, language);
 
     // runtime bytecode compare may fail in case of some immutables aren't known at
     // compile time, so fallback to contract creation bytecode check
-    if (status === undefined) {
+    if (!status) {
+        let deploymentBytecode: string;
+        if (typeof artifact.bytecode === "string") {
+            deploymentBytecode = artifact.bytecode; // brownie
+        } else {
+            deploymentBytecode = artifact.deploymentBytecode?.bytecode; // ape
+        }
+        if (!deploymentBytecode) {
+            throw new Error(`null deployment bytecode read from artifact ${desc.artifactPath}`);
+        }
+
         const tx = await provider.getTransaction(desc.txHash);
         if (!tx) {
             throw new Error(`unable to retrieve transaction ${desc.txHash}`);
@@ -102,7 +121,8 @@ async function verifyBytecode(
         if (!tx.data) {
             throw Error(`no creation bytecode at tx ${desc.txHash}`);
         }
-        return compareCreationBytecode(tx.data, artifact.bytecode, language);
+
+        return compareCreationBytecode(tx.data, deploymentBytecode, language);
     }
 
     return status;
@@ -113,6 +133,9 @@ function compareDeployedBytecode(
     artifactBytecode: string,
     language: string
 ): boolean {
+    blockchainBytecode = trim0x(blockchainBytecode);
+    artifactBytecode = trim0x(artifactBytecode);
+
     // solidity compiler may place links to library contracts which should
     // be replaced by the actual addresses at deployment stage
     if (language === "solidity") {
@@ -135,12 +158,10 @@ function compareDeployedBytecode(
             return false;
         }
 
-        if (trimmedDeployed === trimmedCompiled) {
-            return true;
-        }
+        return trimmedDeployed === trimmedCompiled;
     }
 
-    return undefined;
+    return false;
 }
 
 function compareCreationBytecode(
@@ -148,6 +169,9 @@ function compareCreationBytecode(
     artifactBytecode: string,
     language: string
 ): boolean {
+    blockchainBytecode = trim0x(blockchainBytecode);
+    artifactBytecode = trim0x(artifactBytecode);
+
     let compiledBytecode = artifactBytecode;
     if (language === "solidity") {
         // solidity compiler adds some metadata to bytecode tail and it worth to trim it first
@@ -160,7 +184,20 @@ function compareCreationBytecode(
         return true;
     }
 
+    _print_diff(compiledBytecode, blockchainBytecode);
+
     return false;
+}
+
+/**
+ * Trim 0x prefix from the given string
+ */
+function trim0x(line: string): string {
+    if (line.startsWith("0x")) {
+        return line.slice(2);
+    }
+
+    return line;
 }
 
 /**
@@ -198,4 +235,27 @@ function replaceSolidityLinks(compiledBytecode: string, deployedBytecode: string
     }
 
     return compiledBytecode;
+}
+
+/**
+ * Print git-like diff
+ */
+function _print_diff(one: string, two: string): void {
+    // Large diffs computation may be very computation
+    // intensive, so skip it for action runner
+    if ("GITHUB_ACTION" in process.env) {
+        return;
+    }
+
+    const diff = Diff.diffChars(one, two);
+    const parts = [];
+
+    diff.forEach((part) => {
+        // green for additions, red for deletions
+        // grey for common parts
+        const c = part.added ? chalk.green : part.removed ? chalk.red : chalk.grey;
+        parts.push(c(part.value));
+    });
+
+    core.debug(parts.join(""));
 }
