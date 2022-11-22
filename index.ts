@@ -81,7 +81,7 @@ async function verifyBytecode(
     const artifact = JSON.parse(await fs.readFile(desc.artifactPath, { encoding: "utf8" }));
     const deployedBytecode = await provider.getCode(desc.address);
     const compiledBytecode = artifact.deployedBytecode;
-    const language = artifact.language ?? "solidity";
+    const language = artifact.language?.toLowerCase() || "solidity";
 
     if (!compiledBytecode || compiledBytecode.length <= 2) {
         throw new Error(`null bytecode read from artifact ${desc.artifactPath}`);
