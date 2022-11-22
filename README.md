@@ -34,11 +34,11 @@ provided by the `ethers` package.
 uses: lidofinance/action-verify-bytecode@master
 with:
     file: artifacts.json
-    rpc-url: http://localhost:8545
+    rpcUrl: http://localhost:8545
 ```
 
 ### Standalone
 
 ```bash
-INPUT_FILE=artifacts.json [INPUT_RPC_URL=http://localhost:8545] node dist/index.js
+INPUT_FILE=artifacts.json [INPUT_RPCURL=http://localhost:8545] node dist/index.js
 ```
