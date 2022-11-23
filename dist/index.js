@@ -43933,6 +43933,9 @@ async function verifyBytecode(desc, provider) {
         if (!deploymentBytecode) {
             throw new Error(`null deployment bytecode read from artifact ${desc.artifactPath}`);
         }
+        if (!desc.txHash) {
+            throw new Error(`transaction hash for ${desc.name} is not provided`);
+        }
         const tx = await provider.getTransaction(desc.txHash);
         if (!tx) {
             throw new Error(`unable to retrieve transaction ${desc.txHash}`);
