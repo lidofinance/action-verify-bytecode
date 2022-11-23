@@ -4,6 +4,7 @@ import chalk from "ansi-colors";
 import * as core from "@actions/core";
 import * as Diff from "diff";
 import { ethers } from "ethers";
+import { JSONPath } from "jsonpath-plus";
 
 process.on("unhandledRejection", (reason: any, _) => {
     let error = `Unhandled Rejection occurred. ${reason.stack}`;
@@ -12,6 +13,7 @@ process.on("unhandledRejection", (reason: any, _) => {
 
 type ArtifactEntry = {
     artifactPath: string;
+    jsonPath?: string;
     sourcePath: string;
     name: string;
     address: string;
@@ -80,18 +82,12 @@ async function verifyBytecode(
     desc: ArtifactEntry,
     provider: ethers.providers.Provider
 ): Promise<boolean> {
-    const artifact = JSON.parse(await fs.readFile(desc.artifactPath, { encoding: "utf8" }));
     const language = desc.sourcePath.split(".").pop() === "vy" ? "vyper" : "solidity";
+    const artifact = await getArtifact(desc);
 
-    let runtimeBytecode: string;
-    if (typeof artifact.deployedBytecode === "string") {
-        runtimeBytecode = artifact.deployedBytecode; // brownie
-    } else {
-        runtimeBytecode = artifact.runtimeBytecode?.bytecode; // ape
-    }
-
+    const runtimeBytecode = getRuntimeBytecode(artifact);
     if (!runtimeBytecode || runtimeBytecode.length <= 2) {
-        throw new Error(`null runtime bytecode read from artifact ${desc.artifactPath}`);
+        throw new Error(`no valid runtime bytecode read for ${desc.name}`);
     }
 
     const blockchainBytecode = await provider.getCode(desc.address);
@@ -101,19 +97,15 @@ async function verifyBytecode(
     // runtime bytecode compare may fail in case of some immutables aren't known at
     // compile time, so fallback to contract creation bytecode check
     if (!status) {
-        let deploymentBytecode: string;
-        if (typeof artifact.bytecode === "string") {
-            deploymentBytecode = artifact.bytecode; // brownie
-        } else {
-            deploymentBytecode = artifact.deploymentBytecode?.bytecode; // ape
-        }
-        if (!deploymentBytecode) {
-            throw new Error(`null deployment bytecode read from artifact ${desc.artifactPath}`);
-        }
-
         if (!desc.txHash) {
             throw new Error(`transaction hash for ${desc.name} is not provided`);
         }
+
+        const deploymentBytecode = getDeploymentBytecode(artifact);
+        if (!deploymentBytecode) {
+            throw new Error(`no valid deployment bytecode read for ${desc.name}`);
+        }
+
         const tx = await provider.getTransaction(desc.txHash);
         if (!tx) {
             throw new Error(`unable to retrieve transaction ${desc.txHash}`);
@@ -129,6 +121,38 @@ async function verifyBytecode(
     }
 
     return status;
+}
+
+async function getArtifact(desc: ArtifactEntry) {
+    const artifact = JSON.parse(await fs.readFile(desc.artifactPath, { encoding: "utf8" }));
+    if (desc.jsonPath) {
+        return JSONPath({
+            path: desc.jsonPath,
+            json: artifact,
+            wrap: false /* to get single value only */,
+        });
+    }
+    return artifact;
+}
+
+function getDeploymentBytecode(artifact: any) {
+    if (typeof artifact.bytecode === "string") {
+        // brownie & hardhat
+        return artifact.bytecode;
+    } else {
+        // ape
+        return artifact.deploymentBytecode?.bytecode;
+    }
+}
+
+function getRuntimeBytecode(artifact: any) {
+    if (typeof artifact.deployedBytecode === "string") {
+        // brownie & hardhat flavors
+        return artifact.deployedBytecode;
+    } else {
+        // ape
+        return artifact.runtimeBytecode?.bytecode;
+    }
 }
 
 function compareDeployedBytecode(
