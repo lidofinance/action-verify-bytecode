@@ -61,7 +61,7 @@ jq '.contractTypes | to_entries | .[] | select(.value.runtimeBytecode?.bytecode
 
 **Required** The path to the file to read definitions from.
 
-### `rpc-url`
+### `rpcUrl`
 
 RPC endpoint to make requests against. Will fallback to the
 provided by the `ethers` package.
