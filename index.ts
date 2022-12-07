@@ -5,7 +5,7 @@ import * as core from "@actions/core";
 import { ethers } from "ethers";
 import { JSONPath } from "jsonpath-plus";
 
-import { Diff } from "./lib/onp.js";
+const dmp = require("./lib/dmp.js");
 
 process.on("unhandledRejection", (reason: any, _) => {
     let error = `Unhandled Rejection occurred. ${reason.stack}`;
@@ -40,42 +40,25 @@ const redCross = chalk.red("×");
         provider = new ethers.providers.InfuraProvider();
     }
 
-    const promises = registry.map(async (desc: ArtifactEntry) => {
-        const isMatched = await verifyBytecode(desc, provider);
-        return {
-            isMatched,
-            desc,
-        };
-    });
-    const results = await Promise.allSettled(promises);
+    for (const desc of registry) {
+        try {
+            const isMatched = await verifyBytecode(desc, provider);
+            if (!isMatched) {
+                core.setFailed(`Could not verify bytecode of ${desc.name} contract`);
+                continue;
+            }
 
-    const sortedFulfilled = results
-        .filter((e) => e.status === "fulfilled")
-        .sort((a: any, b: any) => -a.value?.isMatched + b.value?.isMatched);
-
-    for (const result of sortedFulfilled) {
-        const value = (result as any).value as {
-            desc: ArtifactEntry;
-            isMatched: boolean;
-        };
-        const msgParts = value.isMatched ? [greenCheck] : [redCross];
-        msgParts.push(" ");
-        msgParts.push(value.desc.name);
-        msgParts.push(chalk.grey("@"));
-        msgParts.push(chalk.blue(value.desc.address));
-        const msg = msgParts.join("");
-
-        if (value.isMatched) {
+            const msgParts = isMatched ? [greenCheck] : [redCross];
+            msgParts.push(" ");
+            msgParts.push(desc.name);
+            msgParts.push(chalk.grey("@"));
+            msgParts.push(chalk.blue(desc.address));
+            const msg = msgParts.join("");
             core.info(msg);
+        } catch (err) {
+            core.setFailed(err);
             continue;
         }
-
-        core.setFailed(`Could not verify bytecode of ${value.desc.name} contract`);
-    }
-
-    const failures = results.filter((e) => e.status === "rejected");
-    for (const fail of failures) {
-        core.setFailed((fail as PromiseRejectedResult).reason);
     }
 })();
 
@@ -271,27 +254,28 @@ function replaceSolidityLinks(compiledBytecode: string, deployedBytecode: string
 function _print_diff(one: string, two: string): void {
     const parts = [];
 
-    const diff = Diff(one, two);
-    diff.compose();
+    const Diff = new dmp.diff_match_patch();
+    const diff: [number, string][] = Diff.diff_main(one, two);
 
-    diff.getses().forEach((part: { t: any; elem: string }) => {
+    if ("GITHUB_ACTION" in process.env && !core.isDebug() && diff.length > 1_000) {
+        core.warning("Large diff detected, turn on debug mode to display");
+        return;
+    }
+
+    for (const p of diff) {
         let c: chalk.StyleFunction;
-
-        // green for additions, red for deletions
-        // grey for common parts
-        switch (part.t) {
-            case diff.SES_ADD:
-                c = chalk.green;
-                break;
-            case diff.SES_DELETE:
+        switch (p[0]) {
+            case -1:
                 c = chalk.red;
+                break;
+            case 1:
+                c = chalk.green;
                 break;
             default:
                 c = chalk.grey;
         }
+        parts.push(c(p[1]));
+    }
 
-        parts.push(c(part.elem));
-    });
-
-    core.debug(parts.join(""));
+    core.info(parts.join(""));
 }
