@@ -2,9 +2,10 @@ import * as fs from "fs/promises";
 
 import chalk from "ansi-colors";
 import * as core from "@actions/core";
-import * as Diff from "diff";
 import { ethers } from "ethers";
 import { JSONPath } from "jsonpath-plus";
+
+import { Diff } from "./lib/onp.js";
 
 process.on("unhandledRejection", (reason: any, _) => {
     let error = `Unhandled Rejection occurred. ${reason.stack}`;
@@ -268,20 +269,28 @@ function replaceSolidityLinks(compiledBytecode: string, deployedBytecode: string
  * Print git-like diff
  */
 function _print_diff(one: string, two: string): void {
-    // Large diffs computation may be very computation
-    // intensive, so skip it for action runner
-    if ("GITHUB_ACTION" in process.env) {
-        return;
-    }
-
-    const diff = Diff.diffChars(one, two);
     const parts = [];
 
-    diff.forEach((part) => {
+    const diff = Diff(one, two);
+    diff.compose();
+
+    diff.getses().forEach((part: { t: any; elem: string }) => {
+        let c: chalk.StyleFunction;
+
         // green for additions, red for deletions
         // grey for common parts
-        const c = part.added ? chalk.green : part.removed ? chalk.red : chalk.grey;
-        parts.push(c(part.value));
+        switch (part.t) {
+            case diff.SES_ADD:
+                c = chalk.green;
+                break;
+            case diff.SES_DELETE:
+                c = chalk.red;
+                break;
+            default:
+                c = chalk.grey;
+        }
+
+        parts.push(c(part.elem));
     });
 
     core.debug(parts.join(""));
